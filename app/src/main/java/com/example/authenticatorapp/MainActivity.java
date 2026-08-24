@@ -2,10 +2,10 @@ package com.example.authenticatorapp;
 
 import android.os.Bundle;
 import android.os.Handler;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
@@ -27,7 +27,7 @@ public class MainActivity extends AppCompatActivity {
                     timerView.setText("Refreshes in " + remaining + "s");
                 } catch (Exception e) {
                     codeView.setText("Invalid secret");
-                    timerView.setText(e.getMessage());
+                    timerView.setText("Check the Base32 secret");
                 }
             }
             handler.postDelayed(this, 1000);
@@ -42,21 +42,58 @@ public class MainActivity extends AppCompatActivity {
         accountLabel = findViewById(R.id.accountLabel);
         codeView = findViewById(R.id.codeView);
         timerView = findViewById(R.id.timerView);
-        Button generateButton = findViewById(R.id.generateButton);
-        generateButton.setOnClickListener(v -> activateAccount());
+        Button saveButton = findViewById(R.id.generateButton);
+        Button deleteButton = findViewById(R.id.deleteButton);
+        saveButton.setOnClickListener(v -> saveAccount());
+        deleteButton.setOnClickListener(v -> deleteAccount());
+        restoreAccount();
         handler.post(refresh);
     }
 
-    private void activateAccount() {
+    private void restoreAccount() {
+        try {
+            activeSecret = SecureStorage.loadSecret(this);
+            if (activeSecret != null) {
+                String account = SecureStorage.loadAccount(this);
+                accountInput.setText(account);
+                secretInput.setText("");
+                accountLabel.setText(account.isEmpty() ? "Authenticator code" : account);
+            }
+        } catch (Exception e) {
+            activeSecret = null;
+            Toast.makeText(this, "Could not unlock saved account", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void saveAccount() {
         String secret = secretInput.getText().toString().trim();
         if (secret.isEmpty()) {
             secretInput.setError("Enter a Base32 secret");
             return;
         }
-        activeSecret = secret;
-        String account = accountInput.getText().toString().trim();
-        accountLabel.setText(account.isEmpty() ? "Authenticator code" : account);
-        refresh.run();
+        try {
+            String account = accountInput.getText().toString().trim();
+            TotpGenerator.generate(secret, System.currentTimeMillis());
+            SecureStorage.save(this, account, secret);
+            activeSecret = secret;
+            accountLabel.setText(account.isEmpty() ? "Authenticator code" : account);
+            secretInput.setText("");
+            Toast.makeText(this, "Account saved securely", Toast.LENGTH_SHORT).show();
+            refresh.run();
+        } catch (Exception e) {
+            secretInput.setError("Invalid Base32 secret");
+        }
+    }
+
+    private void deleteAccount() {
+        SecureStorage.clear(this);
+        activeSecret = null;
+        accountInput.setText("");
+        secretInput.setText("");
+        accountLabel.setText("No account configured");
+        codeView.setText("------");
+        timerView.setText("Add an account to begin");
+        Toast.makeText(this, "Saved account deleted", Toast.LENGTH_SHORT).show();
     }
 
     @Override protected void onDestroy() {
